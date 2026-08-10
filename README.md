@@ -1,3 +1,102 @@
+<!-- ============================================================
+     REFUGE STUDIOS FORK NOTICE — read before the upstream README below
+     ============================================================ -->
+
+# Refuge Studios Fork
+
+This is Refuge Studios Pty Ltd's private fork of
+[diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute),
+used as the model-routing/observability backend behind
+`ai.srv996920.hstgr.cloud`. **Scope, deliberately narrow**: this fork
+provides LLM provider routing, fallback, and cost/token observability
+only. It is not, and is not being built into, an agent/task/approval
+authority — that remains `cog-director-console`
+(`cog.srv996920.hstgr.cloud`) and BuildMind. See
+`/opt/cog-systems/CHANGES.md` on the production host for the full
+decision record.
+
+## Remotes
+
+- `origin` → this fork (`git@github.com:refuge-studios/OmniRoute.git`)
+- `upstream` → `https://github.com/diegosouzapw/OmniRoute.git`
+
+**Default/working branch is `release/v3.8.50`, not `main`** — verify
+with `gh repo view <owner>/OmniRoute --json defaultBranchRef` before
+assuming otherwise, since upstream may cut a new release branch and
+change this.
+
+## Refuge Studios changes on top of upstream
+
+- `docker-compose.yml`: bind `omniroute-base`'s ports
+  (dashboard/API/live-WS) to `127.0.0.1` instead of the default
+  `0.0.0.0` (Compose's `x-common` anchor sets `API_HOST`/`LIVE_WS_HOST`
+  to `0.0.0.0` unless overridden) — this deployment sits behind an nginx
+  reverse proxy with TLS and Basic Auth, so the app itself should not be
+  directly reachable. Also removed the `redis` service's host port
+  publication entirely (unauthenticated by design upstream, not needed
+  since the app reaches it over the internal Compose network, and it
+  collided with an unrelated pre-existing Redis on the same host).
+
+## License and attribution
+
+AGPL-3.0-only, inherited unmodified from upstream (see `LICENSE`). This
+repo stays **private** to the `refuge-studios` GitHub org. Per AGPL's
+network-use clause, this is compliant only as long as every actual
+network user of the running service (`ai.srv996920.hstgr.cloud`) already
+has read access to this repo — if that ever changes (e.g. non-org staff
+gain access to the deployed app), either grant them repo read access or
+add a visible "Source" link in the running app pointing to a downloadable
+copy of the exact running commit. All upstream copyright/license notices
+are preserved unmodified.
+
+## Upgrade procedure
+
+```bash
+cd /opt/omniroute
+git fetch upstream
+git merge upstream/release/v3.8.50   # prefer merge over rebase — this is a
+                                       # shared deployment branch, not a
+                                       # throwaway feature branch
+# resolve any conflicts, re-verify Refuge Studios' two docker-compose.yml
+# changes above are still intact
+git push origin release/v3.8.50
+```
+
+No local Docker image build is required for config-only upgrades (see
+Phase B rationale in the deployment plan) — pull the new pre-built
+`diegosouzapw/omniroute:<tag>` image from Docker Hub matching the merged
+upstream commit, re-pin the digest, and `docker compose up -d`. Only
+build from source if a genuine Refuge-Studios-specific application-code
+change is ever needed, and only with an explicit memory ceiling
+(`docker build --memory=<N>g`) — building this image from source OOM-killed
+a live production service on this host on 2026-08-10; see
+`/opt/cog-systems/CHANGES.md` for the incident record.
+
+## Database / persistent state
+
+SQLite at `/opt/omniroute/data` (bind-mounted, owned by uid 1000 to
+match the container's `node` user — a real gap found during initial
+deployment, see CHANGES.md), plus a `redis-data` Docker volume for the
+rate-limiter backend. No migration tooling has been exercised yet; back
+up `./data` before any upgrade that touches schema.
+
+## Rollback
+
+1. `docker compose down`
+2. Restore the previous `docker-compose.yml`/`.env` from the
+   timestamped `.bak-*` files in `/opt/omniroute` (same discipline used
+   for every change on this host).
+3. Re-pin the image tag/digest to the previously-known-good value.
+4. `docker compose up -d`, verify `docker port omniroute` and a
+   dashboard curl both look correct before considering it done.
+5. If the nginx vhost (`/etc/nginx/sites-available/ai`) was also
+   changed, restore its `.bak-*` copy and `nginx -t && systemctl reload
+   nginx`.
+
+<!-- ============================================================
+     END REFUGE STUDIOS FORK NOTICE — upstream README follows
+     ============================================================ -->
+
 <div align="center">
 
 <img src="./docs/screenshots/MainOmniRoute.png" alt="OmniRoute Dashboard" width="820"/>
